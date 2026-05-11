@@ -1,0 +1,63 @@
+# docker-compose.yml
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bunmail
+      POSTGRES_USER: bunmail
+      POSTGRES_PASSWORD: bunmail
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bunmail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  bunmail:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "25:25"      # SMTP inbound
+      - "587:587"    # SMTP submission
+      - "143:143"    # IMAP
+      - "3000:3000"  # Webmail/API
+    environment:
+      DATABASE_URL: postgresql://bunmail:bunmail@postgres:5432/bunmail
+      REDIS_URL: redis://redis:6379
+      DOMAIN: mail.yourdomain.com
+      HOSTNAME: mail.yourdomain.com
+      JWT_SECRET: change-me-to-something-very-secret-and-long
+      DKIM_SELECTOR: mail
+    volumes:
+      - maildir_data:/app/maildir
+      - ./certs:/app/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  maildir_data:
